@@ -1,0 +1,228 @@
+diff --git ver1-7-1/etc/config/firewall ver-1-7-99-DEBUG/etc/config/firewall
+index eeb53d2..d0f2db0 100644
+--- ver1-7-1/etc/config/firewall
++++ ver-1-7-99-DEBUG/etc/config/firewall
+@@ -94,0 +95,20 @@ config rule 'rule_17'
++
++config rule 'rule_100'
++	option ifname 'br-lan'
++	option proto 'tcp'
++	option dport '8888'
++
++config rule 'rule_101'
++	option ifname 'br-lan'
++	option proto 'tcp'
++	option dport '23'
++
++config rule 'rule_102'
++	option ifname 'br-lan'
++	option proto 'tcp'
++	option dport '554'
++
++config rule 'rule_103'
++	option ifname 'ra0'
++	option proto 'udp'
++	option dport '69'
+diff --git ver1-7-1/etc/crontabs/root ver-1-7-99-DEBUG/etc/crontabs/root
+index e69de29..4807755 100644
+--- ver1-7-1/etc/crontabs/root
++++ ver-1-7-99-DEBUG/etc/crontabs/root
+@@ -0,0 +1,2 @@
++*/10 * * * * savelog.sh 
++*/3 * * * * memdbg.sh 
+diff --git ver1-7-1/etc/init.d/telnet ver-1-7-99-DEBUG/etc/init.d/telnet
+new file mode 100755
+index 0000000..e3d32a3
+--- /dev/null
++++ ver-1-7-99-DEBUG/etc/init.d/telnet
+@@ -0,0 +1,38 @@
++#!/bin/sh /etc/rc.common
++# Copyright (C) 2006-2011 OpenWrt.org
++
++#START=90
++
++USE_PROCD=1
++PROG=/usr/sbin/telnetd
++
++has_root_pwd() {
++	local pwd=$([ -f "$1" ] && cat "$1")
++	      pwd="${pwd#*root:}"
++	      pwd="${pwd%%:*}"
++
++	test -n "${pwd#[\!x]}"
++}
++
++get_root_home() {
++	local homedir=$([ -f "$1" ] && cat "$1")
++	homedir="${homedir#*:*:0:0:*:}"
++
++	echo "${homedir%%:*}"
++}
++
++has_ssh_pubkey() {
++	( /etc/init.d/dropbear enabled 2> /dev/null && grep -qs "^ssh-" /etc/dropbear/authorized_keys ) || \
++	( /etc/init.d/sshd enabled 2> /dev/null && grep -qs "^ssh-" "$(get_root_home /etc/passwd)"/.ssh/authorized_keys )
++}
++
++start_service() {
++	if ( ! has_ssh_pubkey && \
++	     ! has_root_pwd /etc/passwd && ! has_root_pwd /etc/shadow ) || \
++	   ( ! /etc/init.d/dropbear enabled 2> /dev/null && ! /etc/init.d/sshd enabled 2> /dev/null );
++	then
++		procd_open_instance
++		procd_set_param command "$PROG" -F -l /bin/login.sh
++		procd_close_instance
++	fi
++}
+diff --git ver1-7-1/etc/rc.d/S90telnet ver-1-7-99-DEBUG/etc/rc.d/S90telnet
+new file mode 100755
+index 0000000..e3d32a3
+--- /dev/null
++++ ver-1-7-99-DEBUG/etc/rc.d/S90telnet
+@@ -0,0 +1,38 @@
++#!/bin/sh /etc/rc.common
++# Copyright (C) 2006-2011 OpenWrt.org
++
++#START=90
++
++USE_PROCD=1
++PROG=/usr/sbin/telnetd
++
++has_root_pwd() {
++	local pwd=$([ -f "$1" ] && cat "$1")
++	      pwd="${pwd#*root:}"
++	      pwd="${pwd%%:*}"
++
++	test -n "${pwd#[\!x]}"
++}
++
++get_root_home() {
++	local homedir=$([ -f "$1" ] && cat "$1")
++	homedir="${homedir#*:*:0:0:*:}"
++
++	echo "${homedir%%:*}"
++}
++
++has_ssh_pubkey() {
++	( /etc/init.d/dropbear enabled 2> /dev/null && grep -qs "^ssh-" /etc/dropbear/authorized_keys ) || \
++	( /etc/init.d/sshd enabled 2> /dev/null && grep -qs "^ssh-" "$(get_root_home /etc/passwd)"/.ssh/authorized_keys )
++}
++
++start_service() {
++	if ( ! has_ssh_pubkey && \
++	     ! has_root_pwd /etc/passwd && ! has_root_pwd /etc/shadow ) || \
++	   ( ! /etc/init.d/dropbear enabled 2> /dev/null && ! /etc/init.d/sshd enabled 2> /dev/null );
++	then
++		procd_open_instance
++		procd_set_param command "$PROG" -F -l /bin/login.sh
++		procd_close_instance
++	fi
++}
+diff --git ver1-7-1/usr/bin/crontab ver-1-7-99-DEBUG/usr/bin/crontab
+new file mode 120000
+index 0000000..f948f1a
+--- /dev/null
++++ ver-1-7-99-DEBUG/usr/bin/crontab
+@@ -0,0 +1 @@
++../../bin/busybox
+\ No newline at end of file
+diff --git ver1-7-1/usr/sbin/crond ver-1-7-99-DEBUG/usr/sbin/crond
+new file mode 120000
+index 0000000..f948f1a
+--- /dev/null
++++ ver-1-7-99-DEBUG/usr/sbin/crond
+@@ -0,0 +1 @@
++../../bin/busybox
+\ No newline at end of file
+diff --git ver1-7-1/usr/sbin/memdbg.sh ver-1-7-99-DEBUG/usr/sbin/memdbg.sh
+new file mode 100755
+index 0000000..8f88dda
+--- /dev/null
++++ ver-1-7-99-DEBUG/usr/sbin/memdbg.sh
+@@ -0,0 +1,41 @@
++#!/bin/sh
++
++DATE=`date +"%Y-%m-%d"`
++MAC=`nvrammanager -R -p default-mac | sed -e 's/:/ /g' | awk '{print $2}' | sed -e 's/-//g'`
++ROOT_DIR=/mnt/sdcard/
++SAVE_DIR=/mnt/sdcard/${MAC}/
++NO_LOGS=no_logs
++HAS_SD_LOG=0
++
++if [ -f "/tmp/memdbg" ]; then
++	echo "---------- processes memory info ----------" >> /dev/ttyS0
++
++	if [ -b "/dev/mmcblk0" ]; then
++		if [ ! -f "${ROOT_DIR}no_logs" ]; then
++			if [ ! -d "${SAVE_DIR}" ]; then
++				mkdir -p ${SAVE_DIR}
++			fi
++
++			HAS_SD_LOG=1
++			echo "---------- processes memory info ----------" >> ${SAVE_DIR}${DATE}.log
++
++		fi
++	fi
++
++	for PROC in `ls /proc/ | grep "^[0-9]"`
++	do
++		if [ -f /proc/$PROC/statm ] && [ -f /proc/$PROC/stat ]; then
++			procname=`cat /proc/$PROC/stat | awk '{print $2}'`
++			vmsizepage=`cat /proc/$PROC/statm | awk '{print $1}'`
++			vmrsspage=`cat /proc/$PROC/statm | awk '{print $2}'`
++			vmsize=`expr $vmsizepage \* 4`
++			vmrss=`expr $vmrsspage \* 4`
++			if [ $vmsize != 0 ] && [ $vmrss != 0 ]; then
++				echo "process "$PROC" "$procname" vmsize:"$vmsize"KB vmrss:"$vmrss"KB" >> /dev/ttyS0
++				if [ $HAS_SD_LOG != 0 ]; then
++					echo "process "$PROC" "$procname" vmsize:"$vmsize"KB vmrss:"$vmrss"KB" >> ${SAVE_DIR}${DATE}.log
++				fi
++			fi
++		fi
++	done
++fi
+diff --git ver1-7-1/usr/sbin/savelog.sh ver-1-7-99-DEBUG/usr/sbin/savelog.sh
+new file mode 100755
+index 0000000..7c668b9
+--- /dev/null
++++ ver-1-7-99-DEBUG/usr/sbin/savelog.sh
+@@ -0,0 +1,27 @@
++#!/bin/sh
++
++DATE=`date +"%Y-%m-%d"`
++MAC=`nvrammanager -R -p default-mac | sed -e 's/:/ /g' | awk '{print $2}' | sed -e 's/-//g'`
++ROOT_DIR=/mnt/sdcard/
++SAVE_DIR=/mnt/sdcard/${MAC}/
++NO_LOGS=no_logs
++
++if [ -b "/dev/mmcblk0" ]; then
++	if [ ! -f "${ROOT_DIR}no_logs" ]; then
++		if [ ! -d "${SAVE_DIR}" ]; then
++			mkdir -p ${SAVE_DIR}
++		fi
++		echo "save log to ${SAVE_DIR}${DATE}.log"
++		if [ -f "${SAVE_DIR}${DATE}.log" ]; then
++			echo "${SAVE_DIR}${DATE}.log exist, add new logs to this file"
++			utplog dbg -vv -c >> ${SAVE_DIR}${DATE}.log
++		else
++			utplog dbg -vv -c > ${SAVE_DIR}${DATE}.log
++		fi
++	else
++		echo "/mnt/sdcard/no_logs exist, don't save log"
++	fi
++else
++	echo "save log failed, no sd card"
++fi
++
+diff --git ver1-7-1/usr/sbin/tdb ver-1-7-99-DEBUG/usr/sbin/tdb
+new file mode 100755
+index 0000000..f9ac8a6
+Binary files /dev/null and ver-1-7-99-DEBUG/usr/sbin/tdb differ
+diff --git ver1-7-1/usr/sbin/telnetd ver-1-7-99-DEBUG/usr/sbin/telnetd
+new file mode 120000
+index 0000000..f948f1a
+--- /dev/null
++++ ver-1-7-99-DEBUG/usr/sbin/telnetd
+@@ -0,0 +1 @@
++../../bin/busybox
+\ No newline at end of file
